@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Carbonio · Cuotas</title><link rel="stylesheet" href="/style.css"><script defer src="/app.js"></script></head>
+<body><main>
+<header><div><span class="eyebrow">ADMINISTRACIÓN INTERNA</span><h1>Cuotas de correo</h1><p id="subtitle">Uso de buzones y límites de almacenamiento.</p></div><button id="refresh">Actualizar</button></header>
+<div id="notice" role="status" aria-live="polite">Consultando Carbonio. La primera carga puede demorar.</div>
+<section id="summary" class="summary" aria-label="Resumen"></section>
+<nav aria-label="Secciones"><button id="accountsTab" class="active">Buzones</button><button id="classesTab">Clases de servicio</button><button id="auditTab">Historial</button></nav>
+<section class="panel"><div class="toolbar"><input id="search" type="search" placeholder="Buscar cuenta o clase de servicio" aria-label="Buscar"><select id="sort" aria-label="Ordenar"><option value="used">Mayor uso</option><option value="percent">Mayor porcentaje</option><option value="name">Nombre</option></select><button id="export">Exportar CSV</button></div>
+<div class="table-wrap"><table><thead id="head"></thead><tbody id="rows"></tbody></table></div><p id="footnote">El uso incluye correo, calendarios y contactos del servidor local. No incluye Files ni el espacio total del disco.</p></section>
+<footer>Panel independiente de Carbonio CE · Los valores se expresan en GiB (1024³ bytes).</footer>
+</main>
+<dialog id="editor"><form id="editForm"><span class="eyebrow">MODIFICAR CUOTA</span><h2 id="editTarget"></h2><p id="editInfo"></p><label for="quota">Nuevo límite en GiB</label><input id="quota" type="number" min="0" max="1048576" step="any" required><small>0 = sin límite. El cambio no elimina mensajes.</small><label id="inheritLabel"><input id="inherit" type="checkbox"> Heredar la cuota de la clase de servicio</label><p id="impact"></p><div class="actions"><button id="cancel" type="button">Cancelar</button><button class="primary" type="submit">Revisar cambio</button></div></form></dialog>
+<dialog id="confirm"><h2>Confirmar cambio</h2><p id="confirmText"></p><div class="actions"><button id="back" type="button">Volver</button><button id="save" class="primary" type="button">Aplicar cuota</button></div></dialog>
+</body></html>

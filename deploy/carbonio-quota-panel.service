@@ -1,0 +1,25 @@
+[Unit]
+Description=Panel interno de cuotas Carbonio
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=carbonio-quota
+Group=carbonio-quota
+WorkingDirectory=/opt/carbonio-quota-panel
+EnvironmentFile=/etc/carbonio-quota-panel.env
+ExecStart=/usr/bin/python3 -I /opt/carbonio-quota-panel/launch.py
+Restart=on-failure
+RestartSec=5
+StateDirectory=carbonio-quota-panel
+StateDirectoryMode=0700
+UMask=0077
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+# sudo is needed for the narrowly scoped, root-owned bridge; do not enable NoNewPrivileges.
+
+[Install]
+WantedBy=multi-user.target
