@@ -40,13 +40,14 @@ class WebTests(unittest.TestCase):
         h={**self.headers,'Origin':'https://evil.example','X-CSRF-Token':self.s.csrf}
         self.assertEqual(self.request('POST','/api/change',{},h)[0],403)
     def test_changed_quota_conflict_does_not_write(self):
-        state={'accounts':[{'name':'a@example.test','quota':100,'override':100}],'classes':[]}
+        state={'name':'a@example.test','quota':100,'override':100}
         h={**self.headers,'Origin':'http://127.0.0.1:'+str(self.s.server_port),'X-CSRF-Token':self.s.csrf}
         with patch('server.bridge',return_value=state) as b:
             status,_=self.request('POST','/api/change',{'kind':'account','target':'a@example.test','gib':'50','expected':{'quota':99,'override':99}},h)
         self.assertEqual(status,409); self.assertEqual(b.call_count,1)
+        self.assertEqual(b.call_args.args[0],{'action':'inspect','kind':'account','target':'a@example.test'})
     def test_verified_change_and_audit(self):
-        state={'accounts':[],'classes':[{'name':'default','quota':100}]}
+        state={'name':'default','quota':100}
         h={**self.headers,'Origin':'http://127.0.0.1:'+str(self.s.server_port),'X-CSRF-Token':self.s.csrf}
         with patch('server.bridge',side_effect=[state,{'verified':True,'quota':0}]):
             status,_=self.request('POST','/api/change',{'kind':'cos','target':'default','gib':'0','expected':{'quota':100}},h)
@@ -54,7 +55,7 @@ class WebTests(unittest.TestCase):
         status,body=self.request('GET','/api/audit',headers=self.headers)
         self.assertEqual(json.loads(body)[0]['status'],'verified')
     def test_read_only_blocks_mutation(self):
-        state={'accounts':[],'classes':[{'name':'default','quota':100}]}
+        state={'name':'default','quota':100}
         h={**self.headers,'Origin':'http://127.0.0.1:'+str(self.s.server_port),'X-CSRF-Token':self.s.csrf}
         with patch.dict(os.environ,{'QUOTA_READ_ONLY':'1'}), patch('server.bridge',return_value=state) as b:
             status,_=self.request('POST','/api/change',{'kind':'cos','target':'default','gib':'0','expected':{'quota':100}},h)

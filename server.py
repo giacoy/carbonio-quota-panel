@@ -136,9 +136,7 @@ class Handler(BaseHTTPRequestHandler):
             if gib is not None: quota_bytes(gib)
             with self.server.lock:
                 # Fresh server read, never authorize a write from cached browser data.
-                state=bridge({'action':'snapshot'})
-                entry=next((x for x in state['accounts' if kind=='account' else 'classes'] if x['name']==target),None)
-                if not entry: raise ValueError('Cuenta o COS no encontrada en el servidor local')
+                entry=bridge({'action':'inspect','kind':kind,'target':target})
                 old={key:entry[key] for key in ('quota','override') if key in entry}
                 if old!=data.get('expected'): return self.send(409,{'error':'La cuota cambió desde que abriste el panel. Actualizá y revisá el nuevo valor.'})
                 if os.environ.get('QUOTA_READ_ONLY','1')!='0':

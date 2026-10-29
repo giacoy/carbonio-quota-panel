@@ -42,14 +42,14 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(calls[0],('ma','a@example.test','zimbraMailQuota',''))
     def test_snapshot_domain_cos_and_effective_quota(self):
         c=Carbonio()
-        outputs={('gqu','mail.example.test'):'a@example.test 42\n',
-          ('gac',):'default\ncustom\n',
-          ('gc','default','zimbraId','zimbraMailQuota'):'zimbraId: id1\nzimbraMailQuota: 100\n',
-          ('gc','custom','zimbraId','zimbraMailQuota'):'zimbraId: id2\nzimbraMailQuota: 200\n',
-          ('-l','ga','a@example.test','zimbraMailQuota','zimbraCOSId','displayName','zimbraMailHost'):'displayName: Test\n',
-          ('ga','a@example.test','zimbraMailQuota'):'zimbraMailQuota: 200\n',
-          ('gd','example.test','zimbraDomainDefaultCOSId'):'zimbraDomainDefaultCOSId: id2\n'}
-        with patch('bridge.subprocess.check_output',return_value='mail.example.test\n'), patch.object(c,'run',side_effect=lambda *a:outputs[a]):
+        def batch(command,names,attributes,ldap=False):
+            if command=='gc':
+                return {'default':{'zimbraId':'id1','zimbraMailQuota':'100'},
+                        'custom':{'zimbraId':'id2','zimbraMailQuota':'200'}}
+            if command=='gd': return {'example.test':{'zimbraDomainDefaultCOSId':'id2'}}
+            if ldap: return {'a@example.test':{'displayName':'Test'}}
+            return {'a@example.test':{'zimbraMailQuota':'200'}}
+        with patch('bridge.subprocess.check_output',return_value='mail.example.test\n'), patch.object(c,'run',side_effect=['a@example.test 42\n','default\ncustom\n']),patch.object(c,'batch',side_effect=batch):
             account=c.snapshot()['accounts'][0]
         self.assertEqual((account['used'],account['quota'],account['override'],account['cos']),(42,200,None,'custom'))
 

@@ -81,7 +81,7 @@ Para quitar únicamente el proxy del panel: `a2disconf apache-cuotas`, comprobá
 
 ### Validar antes de habilitar edición
 
-1. Comprobá que el número de buzones corresponde al servidor local. La primera carga y cada refresco vencido consultan los atributos por cuenta y pueden tardar; los datos se guardan hasta 60 segundos en memoria.
+1. Comprobá que el número de buzones corresponde al servidor local. La primera carga y cada refresco vencido consultan los atributos por lotes y pueden tardar; los datos se guardan hasta 60 segundos en memoria.
 2. Compará varios consumos con `carbonio prov gqu "$(zmhostname)"`, ejecutado como `zextras`.
 3. Compará límites y COS con `carbonio prov ga cuenta@ejemplo.test zimbraMailQuota zimbraCOSId` y `carbonio prov gc default zimbraMailQuota`.
 4. Compará si hay valor propio con `carbonio prov -l ga cuenta@ejemplo.test zimbraMailQuota`. Si se omite ese atributo, el panel muestra herencia; el límite efectivo se consulta por separado sin `-l`.
@@ -91,9 +91,17 @@ Para quitar únicamente el proxy del panel: `a2disconf apache-cuotas`, comprobá
 sudo systemctl restart carbonio-quota-panel
 ```
 
-Probá primero en una cuenta de prueba. La lectura previa a cada cambio es siempre nueva. En la interfaz se usan **GiB = 1073741824 bytes**: 45 GiB = 48318382080 bytes. Un límite de **0 significa ilimitado**. Una cuota por debajo del uso actual no borra correo, pero puede impedir operaciones normales del buzón.
+Probá primero en una cuenta de prueba. La lectura previa a cada cambio es siempre nueva y consulta solamente la cuenta o COS que se va a modificar. En la interfaz se usan **GiB = 1073741824 bytes**: 45 GiB = 48318382080 bytes. Un límite de **0 significa ilimitado**. Una cuota por debajo del uso actual no borra correo, pero puede impedir operaciones normales del buzón.
 
 Al cambiar una COS, se afectan las cuentas que heredan su límite. Las cuentas con un valor propio permanecen iguales. Para quitar una excepción de cuenta, usá “Heredar la cuota de la clase de servicio”. El panel verifica el atributo escrito; la propagación a otras sesiones y la aplicación operativa del límite se deben comprobar en Carbonio.
+
+## Rendimiento
+
+Las lecturas de atributos usan el modo por lotes oficial de `carbonio prov -f /dev/stdin`. Las operaciones se generan internamente, los identificadores se validan y solo se solicitan los atributos necesarios. No se aceptan comandos arbitrarios desde el navegador ni se descargan todos los atributos de LDAP.
+
+Con 80 buzones y una COS explícita por cuenta, una prueba local verifica **5 arranques de Java por consulta completa**, en lugar de más de 160. Cuando hace falta resolver las COS predeterminadas de dominio se agrega un lote. El tiempo real depende del servidor y debe medirse allí; las pruebas no simulan una velocidad de Carbonio. Los datos de pantalla se reutilizan durante 60 segundos; “Actualizar” fuerza una consulta nueva.
+
+Antes de editar se consulta únicamente el destinatario del cambio, conservando la detección de conflictos. Después se vuelve a leer el atributo escrito. Para instalar esta optimización deben actualizarse **server.py, bridge.py y el puente ejecutable**; actualizar solo el repositorio no cambia el servicio instalado.
 
 ## Operación y diagnóstico
 
