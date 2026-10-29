@@ -18,8 +18,11 @@ UMask=0077
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=full
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
-# sudo is needed for the narrowly scoped, root-owned bridge; do not enable NoNewPrivileges.
+# On systemd 249, RestrictAddressFamilies implicitly sets NoNewPrivileges,
+# which prevents the narrowly scoped sudo bridge from switching to zextras.
+# Keep the dedicated user and filesystem protections; do not add seccomp-based
+# restrictions that implicitly disable the required setuid transition.
+NoNewPrivileges=false
 
 [Install]
 WantedBy=multi-user.target

@@ -6,6 +6,7 @@ import getpass
 import hashlib
 import hmac
 import json
+import logging
 import os
 from pathlib import Path
 import secrets
@@ -34,7 +35,10 @@ def bridge(request):
     result=subprocess.run(['/usr/bin/sudo','-n','-u','zextras',BRIDGE],input=json.dumps(request),
                           capture_output=True,text=True,timeout=600)
     try: data=json.loads(result.stdout)
-    except ValueError: raise RuntimeError('No se pudo consultar Carbonio. Revisá el servicio y el permiso del puente.')
+    except ValueError:
+        logging.getLogger(__name__).error('Puente Carbonio: salida no válida; código=%s; stderr=%s',
+                                         result.returncode,result.stderr.strip()[:1500])
+        raise RuntimeError('No se pudo consultar Carbonio. El error del puente está en journalctl -u carbonio-quota-panel.')
     if result.returncode or 'error' in data: raise RuntimeError(data.get('error','Falló la consulta a Carbonio'))
     return data
 

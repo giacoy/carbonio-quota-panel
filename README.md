@@ -102,6 +102,18 @@ sudo systemctl status carbonio-quota-panel
 sudo journalctl -u carbonio-quota-panel -n 50 --no-pager
 ```
 
+En Ubuntu 22.04 (systemd 249), `RestrictAddressFamilies=` implica `NoNewPrivileges`, aunque `systemctl show` pueda mostrar el valor original. Eso impide que `sudo` ejecute el puente como `zextras`. El servicio distribuido evita esa directiva y declara `NoNewPrivileges=false`, conservando el usuario dedicado y las restricciones del sistema de archivos. No agregues filtros que vuelvan a impedir esa transición sin cambiar primero la arquitectura del puente.
+
+Si instalaste una versión anterior, actualizá también la unidad (además del código):
+
+```bash
+sudo install -m 0644 -o root -g root deploy/carbonio-quota-panel.service /etc/systemd/system/carbonio-quota-panel.service
+sudo systemctl daemon-reload
+sudo systemctl restart carbonio-quota-panel
+```
+
+La protección efectiva puede consultarse con `grep '^NoNewPrivs:' /proc/$(systemctl show carbonio-quota-panel -p MainPID --value)/status`. Para el puente actual debe ser `0`. Los errores de ejecución sin una respuesta JSON válida ahora se registran en el journal sin volcar la lista de buzones.
+
 Registro persistente: `/var/lib/carbonio-quota-panel/audit.db`. Incluye intentos pendientes, cambios verificados y resultados inciertos. Ante un timeout o “Revisar estado”, **consultá de nuevo antes de reintentar**: un cambio puede haberse aplicado aunque fallara la lectura posterior. El historial muestra los últimos 100 eventos. La interfaz no ofrece borrarlos.
 
 La consulta rechaza formatos `gqu` desconocidos en vez de interpretar columnas ambiguas. El formato esperado es una cuenta y sus bytes utilizados por línea, más el aviso `WARNING:` observado en Carbonio CE. Si otra versión devuelve tres columnas, adaptá el parser con una muestra anonimizada antes de habilitarlo.
