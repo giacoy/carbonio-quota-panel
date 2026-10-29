@@ -2,6 +2,9 @@ import base64
 import http.client
 import json
 import os
+import re
+from html.parser import HTMLParser
+from urllib.parse import urljoin, urlsplit
 import tempfile
 import threading
 import unittest
@@ -61,6 +64,27 @@ class WebTests(unittest.TestCase):
         try: self.assertEqual(self.request('GET','/')[0],503)
         finally:
             for _ in range(8): self.s.slots.release()
+
+    def test_assets_resolve_under_shared_apache_prefix(self):
+        class Assets(HTMLParser):
+            def __init__(self): super().__init__(); self.paths=[]
+            def handle_starttag(self,tag,attrs):
+                values=dict(attrs)
+                if tag=='script' and 'src' in values: self.paths.append(values['src'])
+                if tag=='link' and values.get('rel')=='stylesheet': self.paths.append(values['href'])
+        status,html=self.request('GET','/',headers=self.headers)
+        parser=Assets(); parser.feed(html.decode())
+        self.assertEqual(status,200); self.assertEqual(len(parser.paths),2)
+        for asset in parser.paths:
+            url=urljoin('http://example.test:7780/cuotas/',asset)
+            path=urlsplit(url).path
+            self.assertTrue(path.startswith('/cuotas/'),url)
+            self.assertEqual(self.request('GET',path[len('/cuotas'):],headers=self.headers)[0],200)
+        _,script=self.request('GET','/app.js',headers=self.headers)
+        endpoints=re.findall(r"api\('([^']+)",script.decode())
+        self.assertEqual(len(endpoints),3)
+        for endpoint in endpoints:
+            self.assertTrue(urlsplit(urljoin('http://example.test:7780/cuotas/',endpoint)).path.startswith('/cuotas/api/'))
 
     def test_static_traversal_rejected(self):
         self.assertEqual(self.request('GET','/../bridge.py',headers=self.headers)[0],404)

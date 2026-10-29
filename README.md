@@ -42,6 +42,43 @@ Visitá **http://127.0.0.1:8787** y entrá con `admin` y la contraseña elegida.
 
 Para un acceso compartido sin túnel, colocá un **proxy HTTPS interno independiente** delante de este servicio, limitado a LAN/VPN. Mantené `QUOTA_BIND=127.0.0.1` y configurá `QUOTA_ORIGIN=https://cuotas.ejemplo.interno` con el origen exacto que abrirán los navegadores (sin barra final). El proxy debe conservar `Authorization`, `Origin`, `X-CSRF-Token` y permitir hasta 600 segundos de lectura. No expongas autenticación básica por HTTP en la red ni edites a mano el nginx administrado por Carbonio. Este repositorio no instala ni altera proxies ni certificados.
 
+### Compartir Apache HTTP en el puerto 7780 con PolicyD
+
+Para el despliegue interno solicitado: PolicyD permanece en `/webui/` y el panel en **`http://10.0.0.242:7780/cuotas/`**. Las rutas de recursos y API son relativas, así que también se conserva el acceso directo por túnel a la raíz del backend. No se agrega otro listener, no se habilita SSL y no se reemplaza el sitio de PolicyD.
+
+Después de instalar el panel, como root desde este repositorio:
+
+```bash
+a2enmod proxy proxy_http
+install -m 0644 deploy/apache-cuotas.conf /etc/apache2/conf-available/apache-cuotas.conf
+a2enconf apache-cuotas
+```
+
+En `/etc/carbonio-quota-panel.env`, agregá o actualizá esta línea (sin la ruta `/cuotas/` ni barra final):
+
+```ini
+QUOTA_ORIGIN=http://10.0.0.242:7780
+```
+
+Conservá `QUOTA_BIND=127.0.0.1`. Reiniciá el panel y validá Apache **antes** de recargarlo:
+
+```bash
+systemctl restart carbonio-quota-panel
+apache2ctl configtest
+```
+
+Solo si la validación termina con `Syntax OK`:
+
+```bash
+systemctl reload apache2
+```
+
+Abrí `/cuotas/` y comprobá que `/webui/` sigue funcionando. El HTTP es la opción interna solicitada; la contraseña del panel viaja sin cifrar por la LAN, así que usá una contraseña exclusiva. Para acceso desde fuera de esa red usá VPN, túnel SSH o HTTPS.
+
+Si el panel ya estaba instalado antes de esta adaptación, ejecutá primero la sección **Actualizar** para copiar los recursos con rutas relativas; `git pull` solo actualiza el repositorio, no los archivos instalados en `/opt`.
+
+Para quitar únicamente el proxy del panel: `a2disconf apache-cuotas`, comprobá con `apache2ctl configtest` y recargá Apache. PolicyD permanece en su ruta.
+
 ### Validar antes de habilitar edición
 
 1. Comprobá que el número de buzones corresponde al servidor local. La primera carga y cada refresco vencido consultan los atributos por cuenta y pueden tardar; los datos se guardan hasta 60 segundos en memoria.
