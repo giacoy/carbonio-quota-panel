@@ -24,22 +24,25 @@ class CoreTests(unittest.TestCase):
         c=Carbonio(); calls=[]
         def run(*args):
             calls.append(args)
+            if 'zimbraMailHost' in args: return 'zimbraMailHost: local.example.test\n'
             if 'ga' in args: return 'zimbraMailQuota: 53687091200\n'
             return ''
-        with patch.object(c,'run',side_effect=run):
+        with patch.object(c,'run',side_effect=run),patch('bridge.subprocess.check_output',return_value='local.example.test\n'):
             result=c.change('account','a@example.test','50')
         self.assertEqual(result['verified'],True)
-        self.assertEqual(calls[0],('ma','a@example.test','zimbraMailQuota','53687091200'))
+        self.assertEqual(calls[1],('ma','a@example.test','zimbraMailQuota','53687091200'))
     def test_readback_mismatch_is_failure(self):
         c=Carbonio()
         with patch.object(c,'run',return_value='zimbraMailQuota: 1\n'):
             with self.assertRaises(RuntimeError): c.change('cos','default','50')
     def test_inherit_deletes_override(self):
         c=Carbonio(); calls=[]
-        def run(*args): calls.append(args); return ''
-        with patch.object(c,'run',side_effect=run):
+        def run(*args):
+            calls.append(args)
+            return 'zimbraMailHost: local.example.test\n' if 'zimbraMailHost' in args else ''
+        with patch.object(c,'run',side_effect=run),patch('bridge.subprocess.check_output',return_value='local.example.test\n'):
             self.assertTrue(c.change('account','a@example.test',None)['verified'])
-        self.assertEqual(calls[0],('ma','a@example.test','zimbraMailQuota',''))
+        self.assertEqual(calls[1],('ma','a@example.test','zimbraMailQuota',''))
     def test_snapshot_domain_cos_and_effective_quota(self):
         c=Carbonio()
         def batch(command,names,attributes,ldap=False):

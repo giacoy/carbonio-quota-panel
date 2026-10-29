@@ -110,6 +110,15 @@ class Carbonio:
                 'cos':cos['name'] if cos else 'Desconocida','host':own.get('zimbraMailHost',host)})
         return {'accounts':accounts,'classes':classes,'host':host}
 
+    def _local_account(self,target):
+        validate(target)
+        own=attrs(self.run('-l','ga',target,'zimbraMailQuota','zimbraMailHost'))
+        host=validate(subprocess.check_output([HOSTNAME],text=True,timeout=10).strip().rstrip('.'))
+        account_host=own.get('zimbraMailHost','').strip().rstrip('.')
+        if not account_host or account_host.lower()!=host.lower():
+            raise ValueError('La cuenta no pertenece al servidor local')
+        return own
+
     def inspect(self,kind,target):
         validate(target)
         if kind=='cos':
@@ -117,10 +126,7 @@ class Carbonio:
             if 'zimbraMailQuota' not in data: raise RuntimeError('Carbonio no devolvió cuota de la COS')
             return {'name':target,'quota':int(data['zimbraMailQuota'])}
         if kind!='account': raise ValueError('Tipo no válido')
-        own=attrs(self.run('-l','ga',target,'zimbraMailQuota','zimbraMailHost'))
-        host=subprocess.check_output([HOSTNAME],text=True,timeout=10).strip()
-        if own.get('zimbraMailHost','').lower()!=host.lower():
-            raise ValueError('La cuenta no pertenece al servidor local')
+        own=self._local_account(target)
         effective=attrs(self.run('ga',target,'zimbraMailQuota'))
         if 'zimbraMailQuota' not in effective: raise RuntimeError('Carbonio no devolvió cuota efectiva')
         raw=own.get('zimbraMailQuota')
@@ -132,6 +138,8 @@ class Carbonio:
         if kind not in ('account','cos'): raise ValueError('Tipo no válido')
         if gib is None and kind!='account': raise ValueError('Solo las cuentas pueden heredar')
         value='' if gib is None else str(quota_bytes(gib))
+        # Enforce locality at the privileged write boundary, even for direct calls.
+        if kind=='account': self._local_account(target)
         self.run('ma' if kind=='account' else 'mc',target,'zimbraMailQuota',value)
         data=attrs(self.run('-l','ga' if kind=='account' else 'gc',target,'zimbraMailQuota'))
         actual=data.get('zimbraMailQuota')

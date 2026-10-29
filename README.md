@@ -74,7 +74,9 @@ El navegador usa autenticación básica. Para cerrar completamente la sesión, c
 - Auditoría en `/var/lib/carbonio-quota-panel/audit.db`.
 - Con `--apache`, `/etc/apache2/conf-available/apache-cuotas.conf` y su habilitación.
 
-No ejecuta comandos arbitrarios recibidos de la web. El puente solo admite consulta, inspección y cambio de `zimbraMailQuota`; valida identificadores y usa argumentos separados. La cuenta de servicio puede invocar ese puente para escribir, por lo que debe protegerse su acceso.
+No ejecuta comandos arbitrarios recibidos de la web. El puente solo admite consulta, inspección y cambio de `zimbraMailQuota`; valida identificadores y usa argumentos separados. Antes de cualquier escritura de cuota de cuenta —incluidos valor 0 y restauración de herencia— el propio puente consulta `zimbraMailHost` por LDAP y lo compara con `zmhostname`. Si no hay host, no coincide o falla la consulta, rechaza la operación sin ejecutar `ma`. Esto también se aplica a invocaciones directas del puente, independientemente del flujo web. Las COS conservan su alcance global explícito.
+
+La cuenta de servicio puede invocar ese puente para escribir, por lo que debe protegerse su acceso. La comprobación no constituye una transacción atómica frente a una migración externa de buzón; tampoco hace que el modo lectura o la auditoría web resistan un compromiso de ese usuario.
 
 ## Actualizar una instalación existente
 
