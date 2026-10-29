@@ -87,5 +87,16 @@ class WebTests(unittest.TestCase):
         for endpoint in endpoints:
             self.assertTrue(urlsplit(urljoin('http://example.test:7780/cuotas/',endpoint)).path.startswith('/cuotas/api/'))
 
+    def test_edit_with_preserved_host_on_different_servers(self):
+        for host in ['10.0.0.10:7780','correo.example.test:7780']:
+            h={**self.headers,'Host':host,'Origin':'http://'+host,'X-CSRF-Token':self.s.csrf}
+            with patch('server.bridge',side_effect=[{'name':'default','quota':100},{'verified':True,'quota':0}]):
+                status,_=self.request('POST','/api/change',{'kind':'cos','target':'default','gib':'0','expected':{'quota':100}},h)
+            self.assertEqual(status,200)
+    def test_explicit_origin_rejects_other_host(self):
+        h={**self.headers,'Host':'10.0.0.11:7780','Origin':'http://10.0.0.11:7780','X-CSRF-Token':self.s.csrf}
+        with patch.dict(os.environ,{'QUOTA_ORIGIN':'http://10.0.0.10:7780'}):
+            self.assertEqual(self.request('POST','/api/change',{},h)[0],403)
+
     def test_static_traversal_rejected(self):
         self.assertEqual(self.request('GET','/../bridge.py',headers=self.headers)[0],404)

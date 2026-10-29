@@ -1,159 +1,192 @@
 # Carbonio Quota Panel
 
-Web interna sencilla para recuperar la consulta de uso y la administración de cuotas de correo en Carbonio CE. Se instala **en el servidor Carbonio**, separada de sus archivos y de su interfaz oficial.
+Panel interno sencillo para consultar uso y administrar cuotas de correo en Carbonio CE. Se instala en el servidor Carbonio como una aplicación independiente, con archivos propios y autenticación de administrador.
 
-## Qué permite
+**Las instalaciones nuevas permiten modificar cuotas por defecto.** Cada cambio requiere confirmación y se verifica volviendo a consultar Carbonio. La instalación no cambia cuotas por sí sola.
 
-- Ver buzones del servidor local, bytes utilizados, límite efectivo, porcentaje y origen de la cuota (propia o heredada).
-- Buscar y ordenar por consumo, porcentaje o nombre; exportar CSV.
-- Modificar la cuota de una cuenta o quitar su valor propio para heredar de la COS.
-- Modificar la cuota de cualquier COS, con aviso de alcance.
-- Mostrar cuota ilimitada correctamente (0); no confundirla con uso cero.
-- Confirmar cada cambio, volver a leer el valor en Carbonio y registrar anterior/nuevo/resultado en SQLite.
-- Rechazar cambios si el límite cambió desde que se abrió la pantalla.
+## Funciones
 
-El uso proviene de `carbonio prov gqu`: **correo, calendarios y contactos**, sin Carbonio Files, copias de seguridad ni tamaño físico del disco. En multiserver solo lista buzones devueltos por `gqu` para el host local; una COS puede afectar cuentas de toda la instalación. No administra cuotas de dominio ni inventa equivalencias entre cuota de correo y cuota total.
+- Buzones del servidor local: uso, límite efectivo, porcentaje y cuota propia o heredada.
+- Búsqueda, orden por consumo/porcentaje/nombre y exportación CSV.
+- Modificar cuota por cuenta o volver a heredar de la COS.
+- Modificar cuota de una COS, conservando las excepciones por cuenta.
+- Cuota ilimitada con valor 0.
+- Historial persistente con valor anterior, nuevo y resultado de la verificación.
+- Detección de cambios concurrentes desde que se abrió la pantalla.
+- Consulta por lotes: una prueba con 80 cuentas verifica 5 arranques de Java, frente a más de 160 del diseño inicial.
 
-## Estado de validación
+El uso incluye correo, calendarios y contactos devueltos por `gqu`; no incluye Files, backups ni ocupación física del disco. Solo se listan buzones del servidor local. Las COS pueden afectar cuentas de toda una instalación multiserver. No administra cuotas de dominio ni reemplaza la administración completa de Carbonio.
 
-Pruebas automatizadas locales para validación de entradas, autenticación, protección CSRF, conflictos de edición, lectura posterior y auditoría. **La integración real con Carbonio todavía debe validarse en modo lectura.** La interfaz y los comandos apuntan al entorno informado: Ubuntu 22.04, appserver 4.5.3, webui 4.5.14, admin-console-ui 0.20.4, shell-ui 15.3.5. Estos son datos de referencia, no una certificación de compatibilidad.
+## Instalar en otro servidor
 
-## Instalación (Ubuntu 22.04 / Python 3.10 o superior)
+Ubuntu 22.04 o compatible, Python **3.10+**, `sudo`, `git` y `systemd`. Carbonio debe existir en `/opt/zextras`, con usuario `zextras`. No necesita paquetes Python, Node, Docker ni credenciales de Carbonio en el navegador.
 
-Copiá este repositorio al servidor. Necesitás `python3`, `sudo` y `systemd`; no hay paquetes Python ni Node para instalar. Como root, desde la carpeta del proyecto:
+Como root:
 
 ```bash
-sudo bash deploy/install.sh
+mkdir -p /usr/local/src
+cd /usr/local/src
+git clone https://github.com/giacoy/carbonio-quota-panel.git
+cd carbonio-quota-panel
+bash deploy/install.sh --apache
 ```
 
-El instalador solicita **una contraseña nueva del panel**, independiente de la de Carbonio. Crea un usuario de sistema sin login, un servicio, un puente limitado hacia los comandos de Carbonio y un archivo de configuración con solo el hash de la contraseña. No modifica cuotas ni configura el proxy de Carbonio. No reinicia servicios de correo.
+El repositorio es público; no pide usuario ni token de GitHub. El instalador solicita una contraseña exclusiva del panel de al menos 12 caracteres. Usuario web: **admin**.
 
-Por defecto escucha **solo en 127.0.0.1:8787 y en modo lectura**.
+La opción `--apache` requiere Apache ya instalado y funcionando. Agrega únicamente `/cuotas/`, valida la configuración y recarga Apache. No cambia `ports.conf`, listeners, certificados, el sitio existente ni `/webui/` de PolicyD. No instala Apache ni reinicia Carbonio. En el despliegue compartido en puerto 7780, entrá a:
 
-### Entrar desde tu equipo
+```text
+http://IP_O_NOMBRE_DEL_SERVIDOR:7780/cuotas/
+```
 
-Abrí un túnel SSH (reemplazá el host y usuario por los tuyos):
+**No hay una IP fija en el instalador.** La configuración conserva el encabezado `Host` únicamente para `/cuotas/`, de modo que la comprobación de origen y el token CSRF funcionan con el nombre o IP usado en cada servidor. No se deshabilita la protección CSRF. La ruta debe terminar en `/`; `/cuotas` redirige a `/cuotas/`.
+
+Con HTTP, la contraseña del panel viaja sin cifrar por la LAN. Usá una clave exclusiva. Para otra exposición, utilizá VPN, túnel o HTTPS.
+
+### Sin Apache
+
+```bash
+bash deploy/install.sh
+```
+
+El backend escucha solo en `127.0.0.1:8787`. Desde tu equipo:
 
 ```bash
 ssh -N -L 8787:127.0.0.1:8787 usuario@servidor-carbonio
 ```
 
-Visitá **http://127.0.0.1:8787** y entrá con `admin` y la contraseña elegida. El navegador usa autenticación básica; para cerrar la sesión completamente cerrá sus ventanas o usá un perfil separado. No transmite la contraseña de Carbonio al navegador.
-
-Para un acceso compartido sin túnel, colocá un **proxy HTTPS interno independiente** delante de este servicio, limitado a LAN/VPN. Mantené `QUOTA_BIND=127.0.0.1` y configurá `QUOTA_ORIGIN=https://cuotas.ejemplo.interno` con el origen exacto que abrirán los navegadores (sin barra final). El proxy debe conservar `Authorization`, `Origin`, `X-CSRF-Token` y permitir hasta 600 segundos de lectura. No expongas autenticación básica por HTTP en la red ni edites a mano el nginx administrado por Carbonio. Este repositorio no instala ni altera proxies ni certificados.
-
-### Compartir Apache HTTP en el puerto 7780 con PolicyD
-
-Para el despliegue interno solicitado: PolicyD permanece en `/webui/` y el panel en **`http://10.0.0.242:7780/cuotas/`**. Las rutas de recursos y API son relativas, así que también se conserva el acceso directo por túnel a la raíz del backend. No se agrega otro listener, no se habilita SSL y no se reemplaza el sitio de PolicyD.
-
-Después de instalar el panel, como root desde este repositorio:
+Entrá a `http://127.0.0.1:8787/`. Para agregarlo luego al Apache existente:
 
 ```bash
-a2enmod proxy proxy_http
-install -m 0644 deploy/apache-cuotas.conf /etc/apache2/conf-available/apache-cuotas.conf
-a2enconf apache-cuotas
+bash deploy/configure-apache.sh
 ```
 
-En `/etc/carbonio-quota-panel.env`, agregá o actualizá esta línea (sin la ruta `/cuotas/` ni barra final):
+El navegador usa autenticación básica. Para cerrar completamente la sesión, cerrá las ventanas de ese perfil o utilizá un perfil separado.
+
+## Qué instala
+
+- Código propiedad de root en `/opt/carbonio-quota-panel`.
+- Usuario de sistema `carbonio-quota`, sin login, para la web.
+- Puente propiedad de root en `/usr/local/libexec/carbonio-quota-bridge`.
+- Una regla sudo sin argumentos que permite solo ejecutar ese puente como `zextras`.
+- Configuración privada en `/etc/carbonio-quota-panel.env`, con hash salado de contraseña.
+- Servicio `carbonio-quota-panel`, habilitado al arrancar el servidor.
+- Auditoría en `/var/lib/carbonio-quota-panel/audit.db`.
+- Con `--apache`, `/etc/apache2/conf-available/apache-cuotas.conf` y su habilitación.
+
+No ejecuta comandos arbitrarios recibidos de la web. El puente solo admite consulta, inspección y cambio de `zimbraMailQuota`; valida identificadores y usa argumentos separados. La cuenta de servicio puede invocar ese puente para escribir, por lo que debe protegerse su acceso.
+
+## Actualizar una instalación existente
+
+No ejecutes el instalador otra vez. Sin cambios de cuota en curso, como root:
+
+```bash
+cd /usr/local/src/carbonio-quota-panel
+git pull
+bash deploy/update.sh --apache
+```
+
+Si no usás Apache, omití `--apache`.
+
+El actualizador copia backend, puente, recursos y unidad de systemd. Conserva contraseña, configuración de origen, modo de edición y auditoría. Crea un respaldo privado en `/var/backups/carbonio-quota-panel.*`, incluyendo la base de auditoría en la ruta configurada; detiene brevemente solo el panel y restaura los archivos de aplicación anteriores si falla la actualización. Antes de confirmar el resultado comprueba que el panel responda con su autenticación HTTP, sin consultar ni modificar cuotas. El respaldo contiene el hash de contraseña y la auditoría: no lo publiques.
+
+**Actualizar no cambia un `QUOTA_READ_ONLY=1` elegido anteriormente.** Para habilitar edición en una instalación antigua, editá `/etc/carbonio-quota-panel.env` y dejá `QUOTA_READ_ONLY=0`, luego reiniciá únicamente el panel.
+
+Tras una actualización o reinicio, recargá completamente el navegador para obtener el nuevo token CSRF.
+
+## Configuración
+
+Archivo `/etc/carbonio-quota-panel.env`:
+
+| Variable | Instalación nueva |
+| --- | --- |
+| `QUOTA_USER` | `admin` |
+| `QUOTA_PASSWORD_HASH` | Hash generado durante la instalación |
+| `QUOTA_BIND` | `127.0.0.1` |
+| `QUOTA_PORT` | `8787` |
+| `QUOTA_READ_ONLY` | `0`: edición habilitada |
+| `QUOTA_AUDIT_DB` | `/var/lib/carbonio-quota-panel/audit.db` |
+| `QUOTA_ORIGIN` | Sin definir: HTTP con el `Host` conservado por Apache |
+
+Para acceso por un origen exclusivo o HTTPS, agregá el origen exacto, sin ruta ni barra final:
 
 ```ini
-QUOTA_ORIGIN=http://10.0.0.242:7780
+QUOTA_ORIGIN=https://cuotas.ejemplo.interno:7780
 ```
 
-Conservá `QUOTA_BIND=127.0.0.1`. Reiniciá el panel y validá Apache **antes** de recargarlo:
+Para solo lectura, `QUOTA_READ_ONLY=1`. Después de modificar el archivo:
 
 ```bash
 systemctl restart carbonio-quota-panel
-apache2ctl configtest
 ```
 
-Solo si la validación termina con `Syntax OK`:
+No publiques el contenido de `QUOTA_PASSWORD_HASH`. No copies el archivo `.env` de un servidor a otro: cada instalación debe tener su propia contraseña. Si conservás un `QUOTA_ORIGIN` explícito en una instalación existente, debe coincidir con la dirección usada en el navegador; el actualizador no lo sobrescribe.
+
+## Verificar cuotas
+
+Como `zextras`:
 
 ```bash
-systemctl reload apache2
+carbonio prov gqu "$(zmhostname)"
+carbonio prov ga cuenta@ejemplo.test zimbraMailQuota zimbraCOSId
+carbonio prov -l ga cuenta@ejemplo.test zimbraMailQuota
+carbonio prov gc default zimbraMailQuota
 ```
 
-Abrí `/cuotas/` y comprobá que `/webui/` sigue funcionando. El HTTP es la opción interna solicitada; la contraseña del panel viaja sin cifrar por la LAN, así que usá una contraseña exclusiva. Para acceso desde fuera de esa red usá VPN, túnel SSH o HTTPS.
+El panel usa **GiB = 1073741824 bytes**. Ejemplo: 45 GiB = 48318382080 bytes. Cuota **0 = ilimitada**. La lectura LDAP (`-l`) permite distinguir la excepción propia de la cuota heredada; el límite efectivo se consulta por separado.
 
-Si el panel ya estaba instalado antes de esta adaptación, ejecutá primero la sección **Actualizar** para copiar los recursos con rutas relativas; `git pull` solo actualiza el repositorio, no los archivos instalados en `/opt`.
-
-Para quitar únicamente el proxy del panel: `a2disconf apache-cuotas`, comprobá con `apache2ctl configtest` y recargá Apache. PolicyD permanece en su ruta.
-
-### Validar antes de habilitar edición
-
-1. Comprobá que el número de buzones corresponde al servidor local. La primera carga y cada refresco vencido consultan los atributos por lotes y pueden tardar; los datos se guardan hasta 60 segundos en memoria.
-2. Compará varios consumos con `carbonio prov gqu "$(zmhostname)"`, ejecutado como `zextras`.
-3. Compará límites y COS con `carbonio prov ga cuenta@ejemplo.test zimbraMailQuota zimbraCOSId` y `carbonio prov gc default zimbraMailQuota`.
-4. Compará si hay valor propio con `carbonio prov -l ga cuenta@ejemplo.test zimbraMailQuota`. Si se omite ese atributo, el panel muestra herencia; el límite efectivo se consulta por separado sin `-l`.
-5. Cuando esos datos coincidan, editá `/etc/carbonio-quota-panel.env`, cambiá `QUOTA_READ_ONLY=1` a `QUOTA_READ_ONLY=0` y reiniciá **solo el panel**:
-
-```bash
-sudo systemctl restart carbonio-quota-panel
-```
-
-Probá primero en una cuenta de prueba. La lectura previa a cada cambio es siempre nueva y consulta solamente la cuenta o COS que se va a modificar. En la interfaz se usan **GiB = 1073741824 bytes**: 45 GiB = 48318382080 bytes. Un límite de **0 significa ilimitado**. Una cuota por debajo del uso actual no borra correo, pero puede impedir operaciones normales del buzón.
-
-Al cambiar una COS, se afectan las cuentas que heredan su límite. Las cuentas con un valor propio permanecen iguales. Para quitar una excepción de cuenta, usá “Heredar la cuota de la clase de servicio”. El panel verifica el atributo escrito; la propagación a otras sesiones y la aplicación operativa del límite se deben comprobar en Carbonio.
+Una cuota inferior al uso no borra mensajes, pero puede impedir operaciones normales. Cambiar una COS afecta a sus cuentas con cuota heredada; no modifica las excepciones propias. El cambio por consola y el panel se verificaron en la instalación del usuario; otras instalaciones/versiones deben comprobarse con una cuenta de prueba. No se certifica compatibilidad con todas las versiones.
 
 ## Rendimiento
 
-Las lecturas de atributos usan el modo por lotes oficial de `carbonio prov -f /dev/stdin`. Las operaciones se generan internamente, los identificadores se validan y solo se solicitan los atributos necesarios. No se aceptan comandos arbitrarios desde el navegador ni se descargan todos los atributos de LDAP.
+Las lecturas de atributos usan el modo oficial `carbonio prov -f /dev/stdin`: un proceso atiende varias consultas. Solo se solicitan atributos concretos; no se exporta LDAP completo. La prueba con 80 cuentas y COS explícita verifica 5 procesos Java. Resolver COS predeterminadas de dominio agrega otro lote. El tiempo real depende del servidor; no se promete un tiempo fijo.
 
-Con 80 buzones y una COS explícita por cuenta, una prueba local verifica **5 arranques de Java por consulta completa**, en lugar de más de 160. Cuando hace falta resolver las COS predeterminadas de dominio se agrega un lote. El tiempo real depende del servidor y debe medirse allí; las pruebas no simulan una velocidad de Carbonio. Los datos de pantalla se reutilizan durante 60 segundos; “Actualizar” fuerza una consulta nueva.
+Los datos se reutilizan en memoria durante 60 segundos. “Actualizar” fuerza una consulta nueva. Antes de editar se consulta solo la cuenta o COS afectada y después se verifica el atributo escrito. No hay una transacción global que impida cambios externos en el intervalo entre comprobación y escritura.
 
-Antes de editar se consulta únicamente el destinatario del cambio, conservando la detección de conflictos. Después se vuelve a leer el atributo escrito. Para instalar esta optimización deben actualizarse **server.py, bridge.py y el puente ejecutable**; actualizar solo el repositorio no cambia el servicio instalado.
-
-## Operación y diagnóstico
+## Diagnóstico
 
 ```bash
-sudo systemctl status carbonio-quota-panel
-sudo journalctl -u carbonio-quota-panel -n 50 --no-pager
+systemctl status carbonio-quota-panel --no-pager
+journalctl -u carbonio-quota-panel -n 50 --no-pager
+apache2ctl configtest
 ```
 
-En Ubuntu 22.04 (systemd 249), `RestrictAddressFamilies=` implica `NoNewPrivileges`, aunque `systemctl show` pueda mostrar el valor original. Eso impide que `sudo` ejecute el puente como `zextras`. El servicio distribuido evita esa directiva y declara `NoNewPrivileges=false`, conservando el usuario dedicado y las restricciones del sistema de archivos. No agregues filtros que vuelvan a impedir esa transición sin cambiar primero la arquitectura del puente.
+El puente registra errores de ejecución en el journal sin volcar la lista de buzones. La consulta rechaza lotes incompletos, duplicados o con formato desconocido. Se espera `gqu` con dos columnas (cuenta y bytes usados), más el aviso `WARNING:` observado en CE.
 
-Si instalaste una versión anterior, actualizá también la unidad (además del código):
+En Ubuntu 22.04/systemd 249, `RestrictAddressFamilies` activa implícitamente `NoNewPrivileges` y bloquea el cambio a `zextras` mediante sudo. La unidad distribuida evita esa directiva y declara `NoNewPrivileges=false`, conservando el usuario dedicado y las protecciones del sistema de archivos. Comprobación:
 
 ```bash
-sudo install -m 0644 -o root -g root deploy/carbonio-quota-panel.service /etc/systemd/system/carbonio-quota-panel.service
-sudo systemctl daemon-reload
-sudo systemctl restart carbonio-quota-panel
+grep '^NoNewPrivs:' /proc/$(systemctl show carbonio-quota-panel -p MainPID --value)/status
 ```
 
-La protección efectiva puede consultarse con `grep '^NoNewPrivs:' /proc/$(systemctl show carbonio-quota-panel -p MainPID --value)/status`. Para el puente actual debe ser `0`. Los errores de ejecución sin una respuesta JSON válida ahora se registran en el journal sin volcar la lista de buzones.
+Debe mostrar `0` para este diseño. No agregues filtros incompatibles con sudo sin cambiar primero el puente.
 
-Registro persistente: `/var/lib/carbonio-quota-panel/audit.db`. Incluye intentos pendientes, cambios verificados y resultados inciertos. Ante un timeout o “Revisar estado”, **consultá de nuevo antes de reintentar**: un cambio puede haberse aplicado aunque fallara la lectura posterior. El historial muestra los últimos 100 eventos. La interfaz no ofrece borrarlos.
+“Solicitud inválida”: recargá la página después de reiniciar; comprobá que Apache conserva `Host` con la configuración actual y, si definiste `QUOTA_ORIGIN`, que coincide con protocolo, nombre/IP y puerto del navegador. No quites la protección CSRF.
 
-La consulta rechaza formatos `gqu` desconocidos en vez de interpretar columnas ambiguas. El formato esperado es una cuenta y sus bytes utilizados por línea, más el aviso `WARNING:` observado en Carbonio CE. Si otra versión devuelve tres columnas, adaptá el parser con una muestra anonimizada antes de habilitarlo.
-
-El servicio no ejecuta texto de la web como comandos de shell. El puente solo acepta consulta o cambio de `zimbraMailQuota`, usa argumentos separados y valida identificadores y cantidades. Se ejecuta como `zextras` mediante una única regla sudo sin argumentos. Su código y el de la aplicación pertenecen a root. El modo lectura bloquea escrituras HTTP; el puente conserva capacidad de escribir para cuando se habilite el panel. Protegé el acceso al usuario de sistema.
-
-No sustituye una administración completa de Carbonio ni limita cambios hechos simultáneamente por otras herramientas entre la última consulta y la escritura. Hay un solo administrador del panel; para varios operadores con identidad individual hace falta agregar gestión de usuarios.
-
-## Actualizar
-
-Guardá copia de `/etc/carbonio-quota-panel.env` y `audit.db`. Detené el servicio, instalá los archivos nuevos con propietario root, conservando configuración y auditoría:
-
-```bash
-sudo systemctl stop carbonio-quota-panel
-sudo install -m 0644 -o root -g root server.py bridge.py launch.py /opt/carbonio-quota-panel/
-sudo install -m 0644 -o root -g root static/* /opt/carbonio-quota-panel/static/
-sudo install -m 0755 -o root -g root bridge.py /usr/local/libexec/carbonio-quota-bridge
-sudo systemctl start carbonio-quota-panel
-```
+Historial: últimos 100 eventos, sin opción de borrado desde la web. Ante timeout o resultado “Revisar estado”, consultá la cuota antes de reintentar: la escritura podría haberse aplicado aunque fallara su verificación. Auditoría y configuración deben incluirse en los backups del servidor. Solo hay un administrador del panel; no hay identidad separada para cada operador.
 
 ## Desactivar
 
 ```bash
-sudo systemctl disable --now carbonio-quota-panel
+systemctl disable --now carbonio-quota-panel
 ```
 
-Esto deja Carbonio como estaba; las cuotas que ya se cambiaron permanecen. Para volver a una cuota anterior, consultá el historial y aplicá explícitamente ese valor.
+Las cuotas ya aplicadas se conservan. Para quitar solo la ruta de Apache:
+
+```bash
+a2disconf apache-cuotas
+apache2ctl configtest
+```
+
+Si muestra `Syntax OK`, `systemctl reload apache2`. PolicyD conserva `/webui/`.
 
 ## Desarrollo y pruebas
 
 ```bash
 python3 -m unittest discover -s tests -v
+bash -n deploy/install.sh
+bash -n deploy/update.sh
+bash -n deploy/configure-apache.sh
 ```
 
-Las pruebas web abren un puerto temporal en loopback, usan respuestas simuladas y nunca llaman al servidor Carbonio. No hay telemetría, CDN, fuentes externas ni envío de datos a terceros.
+Las pruebas HTTP abren puertos temporales locales y usan respuestas simuladas; no modifican Carbonio. Los scripts de instalación se comprueban por sintaxis y contratos de configuración; no se ejecutan contra un sistema productivo durante estas pruebas. Sin telemetría, CDN, fuentes externas ni envío de buzones a terceros.

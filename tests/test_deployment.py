@@ -21,3 +21,12 @@ class DeploymentTests(unittest.TestCase):
         output='\n'.join(captured.output)
         self.assertIn('no new privileges',output)
         self.assertNotIn('private account data',output)
+
+    def test_new_install_enables_editing_by_default(self):
+        script=(Path(__file__).resolve().parents[1]/'deploy/install.sh').read_text()
+        self.assertIn('QUOTA_READ_ONLY=0',script)
+        self.assertNotIn('QUOTA_READ_ONLY=1',script)
+    def test_shared_proxy_preserves_host_only_for_panel(self):
+        config=(Path(__file__).resolve().parents[1]/'deploy/apache-cuotas.conf').read_text()
+        self.assertIn('<Location "/cuotas/">\n    ProxyPreserveHost On\n</Location>',config)
+        self.assertNotIn('10.0.0.242',config)
